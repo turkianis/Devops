@@ -1,0 +1,50 @@
+terraform/ ├── main.tf ├── variables.tf ├── locals.tf ├── outputs.tf ├── environments/ │   ├── dev.tfvars │   ├── uat.tfvars │   └── prod.tfvars
+
+Fichier: variables.tf
+
+variable "organization" { description = "Nom de l'organisation" type        = string }
+
+variable "project" { description = "Nom du projet" type        = string }
+
+variable "environment" { description = "Environnement cible (dev, uat, prod)" type        = string }
+
+variable "region" { description = "Région AWS" type        = string }
+
+variable "vpc_cidr" { description = "CIDR de la VPC" type        = string }
+
+variable "public_subnets" { description = "Liste des CIDRs publics" type        = list(string) }
+
+variable "private_subnets" { description = "Liste des CIDRs privés" type        = list(string) }
+
+variable "instances" { description = "Map des instances EC2 avec leurs configurations" type = map(object({ ami           = string instance_type = string os_name       = string })) }
+
+Fichier: locals.tf
+
+locals { name_prefix = "${var.organization}-${var.project}-${var.environment}"
+
+common_tags = { Organization = var.organization Project      = var.project Environment  = var.environment ManagedBy    = "terraform" }
+
+instance_names = { for name, cfg in var.instances : name => "${local.name_prefix}-ec2-${name}-${cfg.os_name}" } }
+
+Fichier: main.tf
+
+provider "aws" { region = var.region }
+
+resource "aws_vpc" "main" { cidr_block = var.vpc_cidr tags = merge(local.common_tags, { Name = "${local.name_prefix}-vpc" }) }
+
+resource "aws_instance" "ec2_instances" { for_each      = var.instances ami           = each.value.ami instance_type = each.value.instance_type
+
+tags = merge(local.common_tags, { Name = local.instance_names[each.key] }) }
+
+Fichier: environments/dev.tfvars
+
+organization   = "lacocotte" project        = "myapp" environment    = "dev" region         = "eu-west-1" vpc_cidr       = "10.0.0.0/16" public_subnets  = ["10.0.1.0/24"] private_subnets = ["10.0.2.0/24"]
+
+instances = { web = { ami           = "ami-0123456789abcdef0" # Amazon Linux instance_type = "t3.micro" os_name       = "amazonlinux" }, api = { ami           = "ami-1122334455667788a" # RedHat instance_type = "t3.small" os_name       = "redhat" }, worker = { ami           = "ami-2233445566778899b" # Ubuntu instance_type = "t3.medium" os_name       = "ubuntu" }, windows = { ami           = "ami-9988776655443322c" # Windows instance_type = "t3.large" os_name       = "windows" } }
+
+Fichier: environments/uat.tfvars (exemple simplifié)
+
+organization   = "lacocotte" project        = "myapp" environment    = "uat" region         = "eu-west-1" vpc_cidr       = "10.1.0.0/16" public_subnets  = ["10.1.1.0/24"] private_subnets = ["10.1.2.0/24"]
+
+instances = { web = { ami           = "ami-aaaabbbbccccdddd1" instance_type = "t3.small" os_name       = "amazonlinux" }, windows = { ami           = "ami-eeeeffffgggghhhh2" instance_type = "t3.large" os_name       = "windows" } }
+
